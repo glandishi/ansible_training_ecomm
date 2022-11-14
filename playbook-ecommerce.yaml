@@ -1,0 +1,100 @@
+-
+  name: "1.FirewallD"
+  hosts: all
+  become: yes
+  tasks:
+    - name: "Installing FirewallD"
+      yum:
+        name: firewalld
+        state: present
+    - name: "Starting and enabling FirewallD"
+      service:
+        name: firewalld
+        state: started
+        enabled: yes
+-
+  name: "2. MariaDB"
+  hosts: db_server
+  become: yes
+  tasks:
+        - name: "Installing MariaDB"
+          yum:
+            name: mariadb-server
+            state: present
+        - name: "Starting and enabling MariaDB"
+          service:
+            name: mariadb
+            state: started
+            enabled: yes
+        - name: "Installing MySQL for Python"
+          yum:
+            name: MySQL-python
+            state: present
+        - name: "Firewall config for DB"
+          shell: |
+              firewall-cmd --permanent --zone=public --add-port=3306/tcp
+              firewall-cmd --reload
+        - name: "Create DB"
+          mysql_db:
+            #login_user: root
+            #login_password:
+            name: '{{db_name}}'
+            state: present
+        - name: "Add user for web_server to db"
+          mysql_user:
+            name: '{{db_user}}'
+            host: "{{hostvars['web_server'].ansible_host}}"
+            password: '{{db_password}}'
+            priv: '*.*:ALL'
+            state: present
+        - name: "Fill db with data"
+          community.mysql.mysql_query:
+            login_db: '{{db_name}}'
+            query:
+              - CREATE TABLE IF NOT EXISTS products (id mediumint(8) unsigned NOT NULL auto_increment,Name varchar(255) default NULL,Price varchar(255) default NULL, ImageUrl varchar(255) default NULL,PRIMARY KEY (id)) AUTO_INCREMENT=1;
+              - INSERT INTO products (Name,Price,ImageUrl) VALUES ("Laptop","100","c-1.png"),("Drone","200","c-2.png"),("VR","300","c-3.png"),("Tablet","50","c-5.png"),("Watch","90","c-6.png"),("Phone Covers","20","c-7.png"),("Phone","80","c-8.png"),("Laptop","150","c-4.png");
+-
+  name: "3. Deploy and configuration of Web Server"
+  hosts: web_server
+  become: yes
+  tasks:
+    - name: "Install packages"
+      yum:
+        name:
+          - httpd
+          - php
+          - php-mysql
+        state: present
+    - name: "Firewall to web page"
+      shell: |
+        firewall-cmd --permanent --zone=public --add-port=80/tcp
+        firewall-cmd --reload
+    - name: "Starting page change in httpd.conf"
+      lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        regexp: "\tDirectoryIndex index.html"
+        line: "\tDirectoryIndex index.php"
+    - name: "Download Git and download package"
+      yum:
+        name: git
+        state: present
+    - name: "Download app from Git"
+      git:
+        repo: 'https://github.com/kodekloudhub/learning-app-ecommerce.git'
+        dest: /var/www/html/
+        clone: yes
+        force: yes
+    - name: "Change of DB ip in index.php"
+      shell:
+        sed -i 's/172.20.1.101/{{hostvars['db_server'].ansible_host}}/g' /var/www/html/index.php
+    - name: Allow httpd to connect to DB over the network
+      seboolean:
+        name: httpd_can_network_connect
+        state: true
+        persistent: true
+      become: true
+    - name: "Start and enable httpd"
+      service:
+        name: httpd
+        state: started
+        enabled: yes

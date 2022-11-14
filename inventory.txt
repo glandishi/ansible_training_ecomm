@@ -1,0 +1,15 @@
+db_server ansible_host=192.168.193.7
+web_server ansible_host=192.168.193.8
+
+[db]
+db_server
+
+[all:vars]
+db_name=ecomdb
+db_user=ecomuser
+db_password=ecompassword
+ansible_become_password=osboxes.org
+ansible_ssh_pass=osboxes.org
+
+[web]
+web_server
